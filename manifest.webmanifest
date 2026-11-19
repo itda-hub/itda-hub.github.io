@@ -1,0 +1,13 @@
+{
+  "name": "잇다 · 상담 연계정보 허브",
+  "short_name": "잇다",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#17797A",
+  "theme_color": "#17797A",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

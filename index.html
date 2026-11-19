@@ -64,6 +64,7 @@ textarea.input{min-height:110px;resize:vertical}
 .target{color:var(--sub);font-size:14px;margin:0 0 12px}
 .card.dup{margin-bottom:12px}.card.dup .org{color:var(--sub);font-size:13px;margin:-4px 0 8px}
 .tag.w{background:#FDE8EA;color:#B4424C}
+.org-line{font-size:13.5px;color:var(--sub);margin:-6px 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .img-btn{display:block;margin:10px auto 0;padding:6px 10px;border:0;background:none;color:var(--sub);font:inherit;font-size:14px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .li-btn{width:100%;text-align:left;font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 .li-stat{font-size:13px;color:var(--sub);margin-top:2px}
@@ -348,11 +349,13 @@ function social(e){
   const a=[]; if(e.viewers) a.push(`👀 상담사 ${e.viewers}명이 봤어요`); if(e.success) a.push(`✅ 연계 성공 ${e.success}`);
   return a.join(" · ");
 }
+const shortOrg=o=>{ o=String(o||"").replace(/\(.*?\)|\[.*?\]/g,"").replace(/\s*[|>·:-].*$/,"").replace(/\s+(홈페이지|공식\s*홈페이지|누리집)$/,"").trim(); return o.length>18?o.slice(0,17)+"…":o; };
 function programCard(p,e,i=-1,onExp=null){
   const tip=e.tips[0];
   return h("div",{class:"card"+(i>=0&&i<2&&e.score>0?" ranked":"")+(e.status!=="active"?" warn":"")},
     h("div",{class:"tags"},rankBadge(i,e),h("span",{class:"tag"},p.cat||"기타"),p.region&&p.region!=="전국"?h("span",{class:"tag g"},p.region):null),
     h("h2",{},p.name||"(이름 없음)"),
+    shortOrg(p.org)?h("div",{class:"org-line"},"🏢 "+shortOrg(p.org)):null,
     p.desc?h("p",{class:"desc clamp"},p.desc):null,
     e.status!=="active"?h("p",{class:"note warn"},e.cur.end?`⚠️ 종료됐다는 제보 ${e.cur.end}건 · 원문에서 확인해 주세요`:"⚠️ 지난 시즌 종료 제보가 있었어요"):null,
     e.changed?h("p",{class:"note chg"},"✎ 상담사 제보로 링크가 바뀌었어요"):null,
@@ -480,7 +483,7 @@ async function saveCardImage(p,e){
     for(const [t,bg,fg] of [[p.cat||"기타","#E3F1F1","#17797A"],[p.region||"전국","#FFF1E6","#B5651D"]]){ const tw=ctx.measureText(t).width+44; ctx.fillStyle=bg; rrect(ctx,x,y,tw,52,26); ctx.fill(); ctx.fillStyle=fg; ctx.fillText(t,x+22,y+27); x+=tw+14; }
     y+=80; ctx.textBaseline="alphabetic";
     font(64,700); ctx.fillStyle="#1d2a33"; for(const l of wrapLines(ctx,p.name,TW,3)){ y+=76; ctx.fillText(l,IN,y); y+=6; }
-    if(p.org){ font(34,500); ctx.fillStyle="#5f6f7a"; y+=56; ctx.fillText(p.org,IN,y); }
+    if(shortOrg(p.org)){ font(34,500); ctx.fillStyle="#5f6f7a"; y+=56; ctx.fillText("🏢 "+shortOrg(p.org),IN,y); }
     if(p.desc){ y+=20; font(34); ctx.fillStyle="#33434d"; for(const l of wrapLines(ctx,p.desc,TW,6)){ y+=54; ctx.fillText(l,IN,y); } }
     const why=p.target&&/^구분:/.test(p.target)?p.target:"";
     if(why){ font(30,500); ctx.fillStyle="#17797A"; for(const l of wrapLines(ctx,"🔀 "+why,TW,2)){ y+=52; ctx.fillText(l,IN,y); } }

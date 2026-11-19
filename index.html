@@ -62,6 +62,11 @@ textarea.input{min-height:110px;resize:vertical}
 .org{color:var(--sub);font-size:14px;margin-bottom:10px}
 .desc{margin:0 0 8px;font-size:15px}
 .target{color:var(--sub);font-size:14px;margin:0 0 12px}
+.card.dup{margin-bottom:12px}.card.dup .org{color:var(--sub);font-size:13px;margin:-4px 0 8px}
+.tag.w{background:#FDE8EA;color:#B4424C}
+.same-btn{display:block;width:100%;margin-top:10px;padding:12px;border-radius:14px;border:1.5px solid var(--brand,#17797A);background:#fff;color:var(--brand,#17797A);font:inherit;font-weight:700;cursor:pointer}
+.why-box{margin-top:18px;padding:16px;border-radius:18px;background:#F4F7F8}.why-q{margin:0 0 10px;font-weight:700}
+.primary.ghost{background:#fff;color:var(--brand,#17797A);border:1.5px solid var(--brand,#17797A)}
 .note{font-size:13.5px;border-radius:9px;padding:7px 10px;margin:0 0 12px}
 .note.warn{background:var(--warn-soft);color:var(--warn)}
 .note.chg{background:var(--chg-soft);color:var(--chg)}
@@ -345,6 +350,7 @@ function programCard(p,e,i=-1,onExp=null){
     p.desc?h("p",{class:"desc clamp"},p.desc):null,
     e.status!=="active"?h("p",{class:"note warn"},e.cur.end?`⚠️ 종료됐다는 제보 ${e.cur.end}건 · 원문에서 확인해 주세요`:"⚠️ 지난 시즌 종료 제보가 있었어요"):null,
     e.changed?h("p",{class:"note chg"},"✎ 상담사 제보로 링크가 바뀌었어요"):null,
+    p.target&&/^구분:/.test(p.target)?h("p",{class:"note chg"},"🔀 비슷한 사업과 "+p.target.replace(/^구분:\s*/,"다른 점: ")):null,
     p.id&&myVote(p.id)==="end"?h("p",{class:"note mine"},"내가 '종료'로 표시했어요 ",h("button",{type:"button",onclick:ev=>{ unvote(p.id); ev.currentTarget.parentNode.remove(); }},"취소")):null,
     tip?h("p",{class:"tip"},"💬 "+tip.tip):null,
     goLink(p,e,"go","원문 페이지 열기 ↗"),
@@ -477,22 +483,57 @@ function expDone(after){
 
 /* ===== 3) 제보(사업 등록): 5단계 + 자동 검증 ===== */
 let draft={};
-const normName=t=>(t||"").replace(/[\s·()\[\]\-_.,]/g,"").toLowerCase();
-function findDup(){
-  const u=normUrl(draft.url||""), n=normName(draft.name);
-  return S.programs.find(p=>{
-    if(u && (normUrl(p.url)===u)) return true;
-    const pn=normName(p.name); return n.length>=4 && pn && (pn===n || pn.includes(n) || n.includes(pn));
-  });
+/* 중복 확인: 서버가 상담사 제보 + 공공데이터 전체와 비교 */
+async function runDup(probe,back,cont){
+  screen({title:"제보",body:h("div",{class:"done"},h("div",{class:"big"},"🔎"),h("p",{class:"q"},"겹치는 사업이 있는지 보는 중"),h("p",{class:"qsub"},"몇 초면 돼요."))});
+  let r=null;
+  try{ r=await api("checkDup",keyVal(),probe); }catch(e){ r=null; }
+  if(!r||r.level==="none"||!r.items||!r.items.length) return cont();
+  if(r.level!=="url" && draft.skipLevel && rankDup(r.level)<=rankDup(draft.skipLevel)) return cont();
+  dupScreen(r,back,cont);
 }
-function dupScreen(p,back,cont){
-  const e=evaluate(p);
-  screen({back,title:"제보",body:[
-    h("p",{class:"q"},"이미 있는 사업이에요"),
-    h("p",{class:"qsub"},"같은 사업이면 경험만 남겨 주세요. 정보가 한곳에 모여요."),
-    programCard(p,e),
-    h("button",{class:"primary",type:"button",onclick:()=>startExp(p,goHome)},"✍ 이 사업에 경험 남기기"),
-    h("button",{class:"link-btn",type:"button",onclick:cont},"다른 사업이에요, 계속 등록")]});
+const rankDup=l=>({url:4,block:3,warn:2,ref:1}[l]||0);
+function dupCard(x){
+  const known=S.programs.find(p=>p.id===x.id), e=known?evaluate(known):null;
+  return h("div",{class:"card dup"},
+    h("div",{class:"tags"},h("span",{class:"tag"},x.source==="api"?"공공데이터":"상담사 제보"),
+      x.region?h("span",{class:"tag g"},x.region):null, e&&e.status==="hidden"?h("span",{class:"tag w"},"숨김"):null),
+    h("h2",{},x.name), x.org?h("div",{class:"org"},x.org):null, x.desc?h("p",{class:"desc clamp"},x.desc):null,
+    goLink({id:null},{url:x.url},"go","원문 페이지 열기 ↗"),
+    h("button",{class:"same-btn",type:"button",onclick:()=>confirmSame(known||x)},"👍 이 사업이 맞아요"));
+}
+function dupScreen(r,back,cont){
+  const L=r.level, T={
+    url:["이미 등록된 사업이에요 🚫","같은 링크가 있어서 새로 올릴 수 없어요. 같은 사업이면 👍를 눌러 주세요."],
+    block:["이미 있는 사업과 겹쳐요 🚫","사업명과 기관(지역)이 같아요. 같은 사업이면 👍를 눌러 주세요."],
+    warn:["비슷한 사업이 있어요 ⚠️","이름은 비슷하지만 기관이나 지역이 달라요. 같은 사업이면 👍, 아니면 계속 등록하세요."],
+    ref:["혹시 이 사업인가요?","이름이 조금 비슷한 사업이 있어요."]}[L];
+  const body=[h("p",{class:"q"},T[0]),h("p",{class:"qsub"},T[1]),...r.items.map(dupCard)];
+  if(L==="block"){
+    const inp=h("input",{class:"input",maxlength:"80",placeholder:"예: 대상이 달라요 (만 34세 이하 → 신혼부부)"}); inp.value=draft.why||"";
+    const err=h("div",{class:"err"});
+    const go=()=>{ const v=inp.value.trim();
+      if(v.length<4){ err.textContent="무엇이 다른지 4자 이상 적어 주세요."; return; }
+      if(hasPII(v)){ err.textContent=PII_MSG; return; }
+      draft.why=v; draft.skipLevel="block"; cont(); };
+    body.push(h("div",{class:"why-box"},h("p",{class:"why-q"},"다른 사업이라면, 무엇이 다른지 한 줄 적어 주세요"),inp,err,
+      h("button",{class:"primary",type:"button",onclick:go},"차이를 적고 계속 등록")));
+  } else if(L==="url"){
+    body.push(h("button",{class:"link-btn",type:"button",onclick:goHome},"처음으로"));
+  } else {
+    body.push(h("button",{class:"primary ghost",type:"button",onclick:()=>{ draft.skipLevel=L; cont(); }},L==="ref"?"아니에요, 계속 등록":"다른 사업이에요, 계속 등록"));
+  }
+  screen({back,title:"제보",body});
+}
+function confirmSame(p){
+  if(!canWrite()) return;
+  const already=myVote(p.id)==="ok";
+  if(!already) vote(p.id,"ok");
+  screen({body:h("div",{class:"done"},h("div",{class:"big"},"🙌"),
+    h("p",{class:"q"},already?"이미 확인한 사업이에요":"확인했어요!"),
+    h("p",{class:"qsub"},already?"새로 등록하지 않았어요.":"새로 등록하지 않고, 기존 사업에 👍 1표를 더했어요."),
+    h("button",{class:"primary",type:"button",onclick:()=>startExp(p,goHome)},"✍ 이 사업에 연계 경험 남기기"),
+    h("button",{class:"link-btn",type:"button",onclick:goHome},"처음으로"))});
 }
 const ADD=[
   {k:"url",q:"원문 링크를 붙여 넣어 주세요",sub:"공고문이나 사업 안내 페이지 주소",type:"url",ph:"https://"},
@@ -508,7 +549,7 @@ function addStep(i){
   if(s.type==="sit") return screen({back,step,title:"제보",body:[...head,h("div",{class:"answers"},
     [...SITUATIONS].sort((a,b)=>(sugIdx(b.k)-sugIdx(a.k))).map(x=>ans(x.t,()=>{ draft.tag=x.k; addStep(i+1); },draft.tag===x.k?"sel":"",x.e,sugIdx(x.k)>0?"링크 내용 기준 추천":null)))]});
   if(s.type==="region") return screen({back,step,title:"제보",body:[...head,h("div",{class:"answers grid"},
-    [...new Set([draft.sugRegion,settings.region,"전국",...REGIONS].filter(Boolean))].map(r=>ans(r,()=>{ draft.region=r; addStep(i+1); },draft.region===r||(!draft.region&&r===draft.sugRegion)?"sel":"")))]});
+    [...new Set([draft.sugRegion,settings.region,"전국",...REGIONS].filter(Boolean))].map(r=>ans(r,()=>{ draft.region=r; runDup({url:draft.url,name:draft.name,org:draft.org||"",region:r},()=>addStep(i),()=>addStep(i+1)); },draft.region===r||(!draft.region&&r===draft.sugRegion)?"sel":"")))]});
   if(s.type==="result") return screen({back,step,title:"제보",body:[...head,h("div",{class:"answers"},
     ...RESULTS.map(r=>ans(r.t,()=>{ draft.result=r.k; history_back=()=>addStep(i); askTip({id:null,name:draft.name},r.k,goHome,tip=>submitAdd(tip)); },"",r.e)),
     ans("아직 안 해 봤어요",()=>{ draft.result=null; submitAdd(""); },"skip"))]});
@@ -520,9 +561,7 @@ function addStep(i){
     if(s.type==="url"&&!safeUrl(v)){ err.textContent="링크는 https:// 로 시작해야 해요."; return; }
     if(hasPII(v)){ err.textContent=PII_MSG; return; }
     draft[s.k]=v;
-    const dup=!draft.skipDup&&findDup();
-    if(dup) return dupScreen(dup,()=>addStep(i),()=>{ draft.skipDup=true; s.type==="url"?readLink(i):addStep(i+1); });
-    if(s.type==="url") return readLink(i);
+    if(s.type==="url") return runDup({url:v},()=>addStep(i),()=>readLink(i));
     addStep(i+1);
   };
   inp.addEventListener("keydown",e=>{ if(e.key==="Enter")go(); });
@@ -546,21 +585,23 @@ function confirmLink(i){
     h("p",{class:"qsub"},"링크에서 읽어 온 내용이에요. 사업명이 다르면 고쳐 주세요."),
     h("div",{class:"card"},h("h2",{},p.name),p.org?h("div",{class:"org"},p.org):null,p.desc?h("p",{class:"desc clamp"},p.desc):null,goLink({id:null},{url:p.url},"go","원문 페이지 열기 ↗")),
     h("div",{class:"answers"},
-      ans("맞아요, 다음",()=>{ const dup=!draft.skipDup&&findDup(); if(dup) return dupScreen(dup,()=>confirmLink(i),()=>{ draft.skipDup=true; addStep(i+2); }); addStep(i+2); },"ok","✓"),
+      ans("맞아요, 다음",()=>addStep(i+2),"ok","✓"),
       ans("사업명 고칠게요",()=>addStep(i+1),"","✎"))]});
 }
 async function submitAdd(tip){
   screen({title:"제보",body:h("p",{class:"status"},"등록하는 중이에요…")});
   try{
-    const newId=await api("addProgram",keyVal(),S.me,{name:draft.name,cat:CAT_OF[draft.tag]||"생계·복지",tag:draft.tag,region:draft.region,url:draft.url,desc:draft.desc||"",org:draft.org||""});
+    const newId=await api("addProgram",keyVal(),S.me,{name:draft.name,cat:CAT_OF[draft.tag]||"생계·복지",tag:draft.tag,region:draft.region,url:draft.url,desc:draft.desc||"",org:draft.org||"",why:draft.why||""});
     const ref={id:newId};
-    S.programs=[...S.programs,{id:newId,name:draft.name,cat:CAT_OF[draft.tag]||"생계·복지",tags:[draft.tag],region:draft.region,url:draft.url,org:draft.org||"",target:"",desc:draft.desc||"",source:"user"}];
+    S.programs=[...S.programs,{id:newId,name:draft.name,cat:CAT_OF[draft.tag]||"생계·복지",tags:[draft.tag],region:draft.region,url:draft.url,org:draft.org||"",target:draft.why?"구분: "+draft.why:"",desc:draft.desc||"",source:"user"}];
     if(draft.result) saveExp(ref.id,draft.result,tip);
     const p={id:ref.id,name:draft.name,cat:CAT_OF[draft.tag],region:draft.region,url:draft.url};
     screen({body:[h("div",{class:"done"},h("div",{class:"big"},"🎉"),h("p",{class:"q"},"제보 완료!"),h("p",{class:"qsub"},"다른 상담사 화면에도 바로 보여요.")),
       programCard(p,{...blankEval,url:draft.url}),
       h("button",{class:"primary",type:"button",onclick:startAdd},"하나 더 제보"),h("button",{class:"link-btn",type:"button",onclick:goHome},"처음으로")]});
   }catch(x){
+    const m=(x&&x.message)||"";
+    if(/DUP_(URL|NAME)/.test(m)){ draft.skipLevel=null; return runDup({url:draft.url,name:draft.name,org:draft.org||"",region:draft.region},()=>addStep(ADD.length-1),()=>submitAdd(tip)); }
     screen({back:()=>addStep(ADD.length-1),title:"제보",body:[h("p",{class:"q"},"등록하지 못했어요"),h("p",{class:"qsub"},(x&&x.message)||"잠시 후 다시 시도해 주세요."),
       h("button",{class:"primary",type:"button",onclick:()=>submitAdd(tip)},"다시 시도")]});
   }

@@ -64,6 +64,12 @@ textarea.input{min-height:110px;resize:vertical}
 .target{color:var(--sub);font-size:14px;margin:0 0 12px}
 .card.dup{margin-bottom:12px}.card.dup .org{color:var(--sub);font-size:13px;margin:-4px 0 8px}
 .tag.w{background:#FDE8EA;color:#B4424C}
+.img-btn{display:block;margin:10px auto 0;padding:6px 10px;border:0;background:none;color:var(--sub);font:inherit;font-size:14px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.li-btn{width:100%;text-align:left;font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.li-stat{font-size:13px;color:var(--sub);margin-top:2px}
+.chip{flex:none;align-self:flex-start;margin:14px 14px 0 0;line-height:1.4;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.chip.ok{background:#E3F1F1;color:#17797A}.chip.chk{background:#FFF1E6;color:#B5651D}.chip.hid{background:#FDE8EA;color:#B4424C}
+.limits{margin-top:22px;padding:16px 18px;border-radius:16px;background:#F4F7F8;font-size:13.5px;color:var(--sub);line-height:1.6}.limits b{color:var(--ink)}.limits p{margin:6px 0 0}
 .same-btn{display:block;width:100%;margin-top:10px;padding:12px;border-radius:14px;border:1.5px solid var(--brand,#17797A);background:#fff;color:var(--brand,#17797A);font:inherit;font-weight:700;cursor:pointer}
 .why-box{margin-top:18px;padding:16px;border-radius:18px;background:#F4F7F8}.why-q{margin:0 0 10px;font-weight:700}
 .primary.ghost{background:#fff;color:var(--brand,#17797A);border:1.5px solid var(--brand,#17797A)}
@@ -166,7 +172,7 @@ const store={
 };
 
 /* ===== 상태 ===== */
-const S={programs:[],votes:{},clicks:{},exp:{},me:null,dbOk:null,loaded:false,keyOk:false,saveFail:false};
+const S={programs:[],votes:{},clicks:{},exp:{},adds:{},me:null,dbOk:null,loaded:false,keyOk:false,saveFail:false};
 const EXEC_URL="https://script.google.com/macros/s/AKfycbyaJnYN_EWXtiMhA4sh94aKJMA5vAikyk1o75yW2R-PZ-mK02meKPZXTrfVNN_11P_79w/exec";
 async function api(fn,...args){ const r=await fetch(EXEC_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({fn,args}),redirect:"follow"}); if(!r.ok) throw new Error("서버 연결이 불안정해요."); const j=await r.json(); if(!j.ok) throw new Error(j.error||"오류가 났어요."); return j.result; }
 function deviceId(){ let id=store.get("hub-uid"); if(!id||!/^[A-Za-z0-9_-]{8,64}$/.test(id)){ id="d"+Array.from({length:20},()=>"abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random()*36)]).join(""); store.set("hub-uid",id); } return id; }
@@ -355,7 +361,8 @@ function programCard(p,e,i=-1,onExp=null){
     tip?h("p",{class:"tip"},"💬 "+tip.tip):null,
     goLink(p,e,"go","원문 페이지 열기 ↗"),
     social(e)?h("p",{class:"social"},social(e)):null,
-    onExp?h("button",{class:"exp-link",type:"button",onclick:onExp},"✍ 연계해 봤어요 · 경험 남기기"):null);
+    onExp?h("button",{class:"exp-link",type:"button",onclick:onExp},"✍ 연계해 봤어요 · 경험 남기기"):null,
+    p.name&&p.url?h("button",{class:"img-btn",type:"button",onclick:()=>saveCardImage(p,e)},"📷 이미지로 저장"):null);
 }
 
 /* ===== 2) 운영 여부 확인: 단어장처럼 한 장씩 ===== */
@@ -418,6 +425,87 @@ function toastUndo(pid,msg){
   document.body.append(t); toastTimer=setTimeout(()=>t.remove(),7000);
 }
 let refreshScreen=()=>{};
+/* ===== 내가 제보한 사업 ===== */
+const fmtDate=ts=>{ const d=new Date(ts); return `${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()}`; };
+const STATUS_LABEL={active:["운영 중","ok"],check:["⚠️ 확인 필요","chk"],hidden:["숨김","hid"]};
+function myReports(back){
+  const mine=Object.entries(S.adds[S.me]||{}).map(([pid,ts])=>({p:S.programs.find(x=>x.id===pid),ts})).filter(x=>x.p).sort((a,b)=>b.ts-a.ts);
+  const again=()=>myReports(back);
+  screen({back,title:"내 제보",body:[
+    h("p",{class:"q"},"내가 제보한 사업"),
+    h("p",{class:"qsub"},mine.length?`모두 ${mine.length}건 · 누르면 카드가 열려요`:"아직 이 기기에서 제보한 사업이 없어요."),
+    mine.length?h("div",{class:"list"},mine.map(({p,ts})=>{ const e=evaluate(p), st=STATUS_LABEL[e.status];
+      const stat=[`👍 ${e.cur.ok}`,`👀 ${e.viewers}명`,`✅ ${e.success}`].join(" · ");
+      return h("button",{class:"li li-btn"+(e.status!=="active"?" warn":""),type:"button",onclick:()=>reportDetail(p,again)},
+        h("div",{class:"li-main"},h("div",{class:"li-name"},p.name),
+          h("div",{class:"li-org"},[p.region||"전국",fmtDate(ts)+" 제보"].join(" · ")),
+          h("div",{class:"li-stat"},stat),
+          p.target&&/^구분:/.test(p.target)?h("div",{class:"li-org"},"🔀 "+p.target):null),
+        h("span",{class:"chip "+st[1]},st[0])); })):null,
+    !mine.length?h("button",{class:"primary",type:"button",onclick:startAdd},"제보하러 가기"):null,
+    h("div",{class:"limits"},h("b",{},"알아 두세요"),
+      h("p",{},"• 이 기기(브라우저) 기준 기록이에요. 다른 휴대폰·PC에서 보거나, 브라우저 데이터를 지우면 목록이 보이지 않아요. 상담사 키를 모두 같이 쓰기 때문에 기기로만 구분해요."),
+      h("p",{},"• 2026년 11월 19일 업데이트 이후 제보부터 쌓여요. 그전에 한 제보는 연결되지 않아요."),
+      h("p",{},"• 관리자가 시트에서 지운 사업은 목록에서 빠져요."))]});
+  refreshScreen=again;
+}
+function reportDetail(p,back){ const e=evaluate(p); screen({back,title:"내 제보",body:[programCard(p,e,-1,()=>startExp(p,back))]}); }
+
+/* ===== 사업 카드 → 이미지(PNG) 저장 ===== */
+function wrapLines(ctx,text,maxW,maxLines){
+  const out=[]; let line=""; const words=String(text||"").replace(/\s+/g," ").trim().split(/(\s)/);
+  const pushChars=w=>{ for(const ch of w){ if(ctx.measureText(line+ch).width>maxW&&line){ out.push(line); line=ch.trim()?ch:""; } else line+=ch; } };
+  for(const w of words){ if(ctx.measureText(line+w).width<=maxW) line+=w; else if(ctx.measureText(w).width>maxW) pushChars(w); else { out.push(line.trimEnd()); line=w.trim()?w:""; } }
+  if(line.trim()) out.push(line.trimEnd());
+  if(out.length>maxLines){ const cut=out.slice(0,maxLines); let l=cut[maxLines-1]; while(l&&ctx.measureText(l+"…").width>maxW) l=l.slice(0,-1); cut[maxLines-1]=l+"…"; return cut; }
+  return out;
+}
+function rrect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+async function saveCardImage(p,e){
+  try{
+    try{ await document.fonts?.ready; }catch(_){}
+    const W=1080, PAD=72, IN=PAD+56, TW=W-IN*2, F='"Noto Sans KR",system-ui,sans-serif';
+    const c=document.createElement("canvas"), ctx=c.getContext("2d");
+    const url=(e&&e.url)||p.url, tip=e&&e.tips&&e.tips[0];
+    // 1) 큰 캔버스에 내용 그리기 → 2) 실제 높이로 잘라 배경과 합치기
+    c.width=W; c.height=3200;
+    const font=(sz,wt=400)=>ctx.font=`${wt} ${sz}px ${F}`;
+    let y=PAD+56;
+    const logo=new Image(); logo.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(LOGO_SVG.replace("<svg ",'<svg xmlns="http://www.w3.org/2000/svg" '));
+    await new Promise(r=>{ logo.onload=r; logo.onerror=r; setTimeout(r,1500); });
+    try{ ctx.drawImage(logo,IN-6,y,125,60); }catch(_){}
+    font(30,500); ctx.fillStyle="#5f6f7a"; ctx.textBaseline="middle"; ctx.fillText("상담 연계정보 허브",IN+135,y+32);
+    y+=110;
+    let x=IN; font(30,700);
+    for(const [t,bg,fg] of [[p.cat||"기타","#E3F1F1","#17797A"],[p.region||"전국","#FFF1E6","#B5651D"]]){ const tw=ctx.measureText(t).width+44; ctx.fillStyle=bg; rrect(ctx,x,y,tw,52,26); ctx.fill(); ctx.fillStyle=fg; ctx.fillText(t,x+22,y+27); x+=tw+14; }
+    y+=80; ctx.textBaseline="alphabetic";
+    font(64,700); ctx.fillStyle="#1d2a33"; for(const l of wrapLines(ctx,p.name,TW,3)){ y+=76; ctx.fillText(l,IN,y); y+=6; }
+    if(p.org){ font(34,500); ctx.fillStyle="#5f6f7a"; y+=56; ctx.fillText(p.org,IN,y); }
+    if(p.desc){ y+=20; font(34); ctx.fillStyle="#33434d"; for(const l of wrapLines(ctx,p.desc,TW,6)){ y+=54; ctx.fillText(l,IN,y); } }
+    const why=p.target&&/^구분:/.test(p.target)?p.target:"";
+    if(why){ font(30,500); ctx.fillStyle="#17797A"; for(const l of wrapLines(ctx,"🔀 "+why,TW,2)){ y+=52; ctx.fillText(l,IN,y); } }
+    if(e&&e.status!=="active"){ font(30,700); ctx.fillStyle="#B4424C"; y+=60; ctx.fillText("⚠️ 종료 제보가 있어요 · 원문에서 꼭 확인하세요",IN,y); }
+    if(tip){ font(32); const tl=wrapLines(ctx,"💬 "+tip.tip,TW-48,3); y+=36; const bh=tl.length*46+30; ctx.fillStyle="#F4F7F8"; rrect(ctx,IN,y,TW,bh,24); ctx.fill(); ctx.fillStyle="#33434d"; let ty=y+14; for(const l of tl){ ty+=40; ctx.fillText(l,IN+24,ty); ty+=6; } y+=bh; }
+    if(e){ font(30,500); ctx.fillStyle="#5f6f7a"; y+=64; ctx.fillText([`👍 확인 ${e.cur.ok}`,`👀 상담사 ${e.viewers}명`,`✅ 연계 성공 ${e.success}`].join("   "),IN,y); }
+    font(28); const ul=wrapLines(ctx,url,TW-48,3);
+    y+=36; const lh=ul.length*40+80; ctx.strokeStyle="#17797A"; ctx.lineWidth=3; rrect(ctx,IN,y,TW,lh,24); ctx.stroke();
+    font(28,700); ctx.fillStyle="#17797A"; ctx.fillText("원문 링크",IN+24,y+46); font(28); ctx.fillStyle="#1d2a33"; let uy=y+46; for(const l of ul){ uy+=40; ctx.fillText(l,IN+24,uy); }
+    y+=lh;
+    font(26); ctx.fillStyle="#8a99a3"; y+=62; ctx.fillText(`${fmtDate(Date.now())} 저장 · 운영 여부는 원문에서 다시 확인하세요`,IN,y);
+    font(26,700); ctx.fillStyle="#17797A"; y+=42; ctx.fillText("itda-hub.github.io",IN,y);
+    const H=Math.max(y+56+PAD,W);
+    const out=document.createElement("canvas"); out.width=W; out.height=H; const o=out.getContext("2d");
+    o.fillStyle="#EAF4F4"; o.fillRect(0,0,W,H); o.fillStyle="#FFFFFF"; rrect(o,PAD,PAD,W-PAD*2,H-PAD*2,48); o.fill();
+    o.drawImage(c,0,0);
+    // 3) 저장
+    const blob=await new Promise(r=>out.toBlob(r,"image/png"));
+    if(!blob) throw new Error("no blob");
+    const d0=new Date(), pad=n=>String(n).padStart(2,"0"); const fname=`itda_${d0.getFullYear()}${pad(d0.getMonth()+1)}${pad(d0.getDate())}_${pad(d0.getHours())}${pad(d0.getMinutes())}${pad(d0.getSeconds())}.png`;
+    const a=h("a",{href:URL.createObjectURL(blob),download:fname}); document.body.append(a); a.click();
+    setTimeout(()=>{ a.remove(); URL.revokeObjectURL(a.href); },10000);
+    toastMsg("이미지를 저장했어요. 다운로드(또는 사진) 폴더를 확인하세요.");
+  }catch(err){ toastMsg("이미지를 만들지 못했어요. 화면 캡처로 저장해 주세요."); }
+}
 function myRecords(){
   const mine=Object.entries(S.votes[S.me]||{}).filter(([pid,v])=>v.ts>=SEASON);
   const name=pid=>S.programs.find(p=>p.id===pid)?.name||"(삭제된 사업)";
@@ -593,12 +681,13 @@ async function submitAdd(tip){
   try{
     const newId=await api("addProgram",keyVal(),S.me,{name:draft.name,cat:CAT_OF[draft.tag]||"생계·복지",tag:draft.tag,region:draft.region,url:draft.url,desc:draft.desc||"",org:draft.org||"",why:draft.why||""});
     const ref={id:newId};
+    S.adds={...S.adds,[S.me]:{...(S.adds[S.me]||{}),[newId]:Date.now()}};
     S.programs=[...S.programs,{id:newId,name:draft.name,cat:CAT_OF[draft.tag]||"생계·복지",tags:[draft.tag],region:draft.region,url:draft.url,org:draft.org||"",target:draft.why?"구분: "+draft.why:"",desc:draft.desc||"",source:"user"}];
     if(draft.result) saveExp(ref.id,draft.result,tip);
     const p={id:ref.id,name:draft.name,cat:CAT_OF[draft.tag],region:draft.region,url:draft.url};
     screen({body:[h("div",{class:"done"},h("div",{class:"big"},"🎉"),h("p",{class:"q"},"제보 완료!"),h("p",{class:"qsub"},"다른 상담사 화면에도 바로 보여요.")),
       programCard(p,{...blankEval,url:draft.url}),
-      h("button",{class:"primary",type:"button",onclick:startAdd},"하나 더 제보"),h("button",{class:"link-btn",type:"button",onclick:goHome},"처음으로")]});
+      h("button",{class:"primary",type:"button",onclick:startAdd},"하나 더 제보"),h("button",{class:"link-btn",type:"button",onclick:()=>myReports(goHome)},"📮 내 제보 기록 보기"),h("button",{class:"link-btn",type:"button",onclick:goHome},"처음으로")]});
   }catch(x){
     const m=(x&&x.message)||"";
     if(/DUP_(URL|NAME)/.test(m)){ draft.skipLevel=null; return runDup({url:draft.url,name:draft.name,org:draft.org||"",region:draft.region},()=>addStep(ADD.length-1),()=>submitAdd(tip)); }
@@ -616,6 +705,7 @@ function openSettings(){
     h("div",{class:"row"},h("b",{},"상담사 키"),h("span",{},S.keyOk?"인증됨 (이 기기에 저장)":hasKey?"키가 맞지 않음":"없음 · 보기 전용")),
     h("div",{class:"answers",style:"margin-top:18px"},
       S.keyOk?ans("내 확인 기록 · 잘못 누른 것 취소",myRecords,"","🗂"):null,
+      ans("내가 제보한 사업",()=>myReports(openSettings),"","📮"),
       ans("기본 지역 바꾸기",()=>onboardRegion(openSettings),"","📍"),
       ans(hasKey?"상담사 키 다시 입력":"상담사 키 입력",()=>onboardKey(openSettings,[1,1]),"","🔑"),
       hasKey?ans("이 기기에서 키 지우기",()=>{store.set("hub-key","__skip__");S.keyOk=false;openSettings();},"skip"):null),
@@ -626,7 +716,7 @@ let rerenderHome=()=>{ if(app.dataset.screen==="home") goHome(); };
 async function load(){
   try{
     const d=await api("getData",keyVal(),settings.region||"");
-    S.programs=d.programs||[]; S.votes=d.votes||{}; S.clicks=d.clicks||{}; S.exp=d.exp||{};
+    S.programs=d.programs||[]; S.votes=d.votes||{}; S.clicks=d.clicks||{}; S.exp=d.exp||{}; S.adds=d.adds||{};
     if(d.season){ SEASON=d.season; PREV=d.prev; }
     S.keyOk=!!d.keyOk; S.dbOk=true;
   }catch(e){ S.dbOk=false; }
